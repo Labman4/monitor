@@ -20,7 +20,7 @@ jobs:
     - uses: redhat-actions/push-to-registry@v2.7
       with:
         image: ipquery
-        registry: quay.io/elpsykongroo
+        registry: docker.io/${{ secrets.DOCKER_NAME }}
         tags: ${{ github.head_ref || github.ref_name }}
-        username:  ${{ secrets.QUAY_REGISTRY_NAME }}
-        password:  ${{ secrets.QUAY_REGISTRY_PASS }} 
+        username:  ${{ secrets.DOCKER_NAME }}
+        password:  ${{ secrets.DOCKER_PASS }} 
