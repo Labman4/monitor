@@ -6,7 +6,6 @@ COPY . .
 
 RUN go build -o ipquery
 
-EXPOSE 114115
+EXPOSE 11415
 
-# 运行应用程序
 CMD ["./ipquery"]
