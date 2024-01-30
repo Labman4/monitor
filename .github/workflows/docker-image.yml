@@ -15,7 +15,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag ipquery:${{ github.head_ref || github.ref_name }}
+      run: docker build . --file Dockerfile --tag monitor:${{ github.head_ref || github.ref_name }}
     
     - uses: redhat-actions/push-to-registry@v2.7
       with:
