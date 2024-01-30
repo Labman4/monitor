@@ -19,7 +19,7 @@ jobs:
     
     - uses: redhat-actions/push-to-registry@v2.7
       with:
-        image: ipquery
+        image: monitor
         registry: docker.io/${{ secrets.DOCKER_NAME }}
         tags: ${{ github.head_ref || github.ref_name }}
         username:  ${{ secrets.DOCKER_NAME }}

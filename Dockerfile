@@ -4,8 +4,8 @@ WORKDIR /app
 
 COPY . .
 
-RUN go build -o ipquery
+RUN go build -o monitor
 
 EXPOSE 11415
 
-CMD ["./ipquery"]
+CMD ["./monitor"]
