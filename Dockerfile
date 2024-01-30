@@ -3,11 +3,12 @@ FROM golang:1.20-alpine
 WORKDIR /app
 
 RUN apk --no-cache add shadow \
-    && useradd -u 1000 user \
-    && chown -R user:user /app \
-    && mkdir -p /home/user/.aws
+    && useradd -u 1000 -m user \
+    && chown -R user:user /app
 
 USER user
+
+RUN mkdir -p /home/user/.aws /home/user/.cache
 
 COPY . .
 
