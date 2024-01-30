@@ -1,5 +1,6 @@
 # monitor
 
+```json
 config.json with s3 and oauth2
 {
     "endpoint": "", // s3 config
@@ -15,6 +16,9 @@ config.json with s3 and oauth2
     "UploadDuration": 1 // hour
 
 }
+```
+
+```text
 config.json need create in homeDir/.aws work with aws credentials
 credentials struct
 [default]
@@ -24,3 +28,4 @@ aws_secret_access_key = ""
 file struct like this
 /home/someone/.aws/credentials
 /home/someone/.aws/config.json
+```
