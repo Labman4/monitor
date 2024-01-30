@@ -52,6 +52,9 @@ type Config struct {
 	ClientId   string `json:"clientId"`
 	ClientSecret string `json:"clientSecret"`
 	IntrospectUrl string `json:"introspectUrl"`
+	EnableCheck bool `json:"enableCheck"`
+	CheckDuration int `json:"checkDuration"`
+	UploadDuration int `json:"uploadDuration"`
 }
 
 type Introspect struct {
@@ -173,10 +176,12 @@ func main() {
 			fmt.Println("Error starting server:", err)
 		}
 	}()
+	
+	if config.EnableCheck {
+		go checkAPIHealth(*config)
+	}
 
-	go checkAPIHealth(*config)
-
-	go scheduleUploadStatus(generateDatapath(config.Name), config.Endpoint, config.Bucket, config.Region)
+	go scheduleUploadStatus(generateDatapath(config.Name), *config)
 
 	select {}
 }
@@ -419,7 +424,7 @@ func isDate(str string) bool {
 }
 
 func checkAPIHealth(config Config) {
-	for range time.Tick(30 * time.Second) {
+	for range time.Tick(time.Duration(config.CheckDuration) * time.Second) {
 		currentTime := time.Now()
 		resp, err := http.Get(config.MonitorUrl)
 		currentTimeString := currentTime.Format("2006-01-02 15:04:05")
@@ -440,10 +445,10 @@ func checkAPIHealth(config Config) {
 	}
 }
 
-func scheduleUploadStatus(filePath string, endpoint string, bucket string, region string) {
-	uploadStatus(filePath, endpoint, bucket, region)
-	for range time.Tick(24 * time.Hour) {
-		uploadStatus(filePath, endpoint, bucket, region)
+func scheduleUploadStatus(filePath string, config Config) {
+	uploadStatus(filePath, config.Endpoint, config.Bucket, config.Region)
+	for range time.Tick(time.Duration(config.UploadDuration) * time.Hour) {
+		uploadStatus(filePath, config.Endpoint, config.Bucket, config.Region)
 	}
 }
 
