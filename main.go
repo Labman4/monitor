@@ -265,6 +265,7 @@ func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
 		for _, file := range files {
 			if !file.IsDir() && isDate(strings.Split(file.Name(), "_")[0]) {
 				fileNames = append(fileNames, file.Name())
+				basics.Download(config.Bucket, file.Name(), dataRemotePath + file.Name())
 			}
 		}
 		if (len(fileNames) > 1) {
@@ -650,7 +651,8 @@ func (basics BucketBasics) Download(bucketName string, objectKey string, fileNam
 		if err != nil {
 			var bne *types.NotFound
 			if errors.As(err, &bne) {
-				logger.Info("remote data not exist, skip download:", fileName)
+				logger.Info("remote data not exist, skip download, will remove local data to sync:", fileName)
+				os.Remove(fileName)
 				return
 			} 
 		} 
