@@ -345,7 +345,7 @@ func writeCSV(c *gin.Context, dataMap map[string][]string, name string) {
 
 func generateDatapath (name string) string {
 	operateSystem := runtime.GOOS;
-	filename := "/var/log/" + name;
+	filename := "/var/log/" + name + "/";
 	if operateSystem != "linux" {
 		currentUser, err := user.Current()
 		if err != nil {
@@ -382,7 +382,7 @@ func generateDatapath (name string) string {
 
 func generateRemoteDatapath (name string) string {
 	operateSystem := runtime.GOOS;
-	filename := "/var/log/" + name + "/remote";
+	filename := "/var/log/" + name + "/remote/";
 	if operateSystem != "linux" {
 		currentUser, err := user.Current()
 		if err != nil {
