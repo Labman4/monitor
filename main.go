@@ -7,12 +7,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
-	"os/user"
 	"runtime"
 	"sort"
 	"strconv"
@@ -129,7 +127,7 @@ func main() {
 
 	config, err := readConfigFile(configFilePath)
 	if err != nil {
-		fmt.Println("Error reading config file:", err)
+		logger.Error("Error reading config file:", err)
 		return
 	}
 	r := gin.Default()
@@ -185,7 +183,7 @@ func main() {
 
 	go func() {
 		if err := r.Run(":11415"); err != nil {
-			fmt.Println("Error starting server:", err)
+			logger.Error("Error starting server:", err)
 		}
 	}()
 	
@@ -229,18 +227,30 @@ func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
 		client := initS3(config.Endpoint, config.Bucket, config.Region)
 		basics := BucketBasics{client}
 		bucketExist,err := basics.BucketExists(config.Bucket)
+		if err != nil {
+			logger.Error("BucketExists error:", err)
+			return nil
+		}
 		if !bucketExist {
 			basics.CreateBucket(config.Bucket, config.Region)
-		}
-		if err != nil {
-			logger.Error("read error:", err)
-			return nil
 		}
 		listObjects, err := basics.ListObjects(config.Bucket);
 		if err != nil {
 			logger.Error("listObject error:", err)
 			return nil
 		}
+
+		_, err = os.Stat(dataRemotePath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				logger.Error("start create dir:", dataRemotePath)
+				os.Create(dataRemotePath)
+			} else {
+				logger.Error("read all error:", err)
+				return nil
+			}	
+		}
+		
 		for _, item := range listObjects {
 			if isDate(strings.Split(*item.Key, "_")[0]) {
 				basics.Download(config.Bucket, *item.Key, dataRemotePath + *item.Key)
@@ -249,7 +259,6 @@ func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
 		logger.Info("list remote dir:", dataRemotePath)
 		files, err := os.ReadDir(dataRemotePath)
 		if err != nil {
-			logger.Error("read all error:", err)
 			return nil
 		}
 		var fileNames []string
@@ -287,14 +296,14 @@ func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
 			status, err := reader.ReadAll()
 			statuses = append(statuses, status...)
 			if err != nil {
-				fmt.Println("read err")
+				logger.Error("read err")
 				return nil
 			}		
 		}
 		if (date == "") {
 			stautsData, err := readSingleFile(dataPath + formatData);
 			if err != nil {
-				return nil
+				logger.Error("read today data err:", err)
 			}
 			statuses = append(statuses, stautsData...)
 		}
@@ -365,35 +374,34 @@ func generateDatapath (name string) string {
 	operateSystem := runtime.GOOS;
 	filename := "/var/log/" + name + "/";
 	if operateSystem != "linux" {
-		currentUser, err := user.Current()
+		homePath, err := os.UserHomeDir()
 		if err != nil {
-			fmt.Println("Error:", err)
 			return ""
 		}
-		filename = currentUser.HomeDir
 		if operateSystem == "windows" {
-			filename = filename + `\`+ name + `\`
+			filename = homePath + `\`+ name + `\`
 		} else {
-			filename = filename + "/" + name+ "/"
+			filename = homePath + "/" + name+ "/"
 		}
 	}
 	fileInfo, err := os.Stat(filename)
     if err != nil {
         if os.IsNotExist(err) {
-			fmt.Println("dir not exist")
+			logger.Error("dir not exist")
 			err := os.Mkdir(filename, 0755)
 			if err != nil {
-				fmt.Println("Error:", err)
+				logger.Error("Error:", err)
 				return ""
 			}
+			return filename
 		} else {
-            fmt.Println("other err:", err)
+            logger.Error("other err:", err)
         }
         return ""
     }
 
 	if !fileInfo.Mode().IsDir() {
-        fmt.Println("not dir")
+        logger.Error("not dir")
     }
 	return filename
 }
@@ -402,35 +410,34 @@ func generateRemoteDatapath (name string) string {
 	operateSystem := runtime.GOOS;
 	filename := "/var/log/" + name + "/remote/";
 	if operateSystem != "linux" {
-		currentUser, err := user.Current()
+		homePath, err := os.UserHomeDir()
 		if err != nil {
-			fmt.Println("Error:", err)
 			return ""
 		}
-		filename = currentUser.HomeDir
 		if operateSystem == "windows" {
-			filename = filename + `\`+ name + `\remote\` 
+			filename = homePath + `\`+ name + `\remote\` 
 		} else {
-			filename = filename + "/" + name + "/remote/" 
+			filename = homePath + "/" + name + "/remote/" 
 		}
 	}
 	fileInfo, err := os.Stat(filename)
     if err != nil {
         if os.IsNotExist(err) {
-			fmt.Println("dir not exist")
+			logger.Error("dir not exist")
 			err := os.Mkdir(filename, 0755)
 			if err != nil {
-				fmt.Println("Error:", err)
+				logger.Error("Error:", err)
 				return ""
 			}
+			return filename
 		} else {
-            fmt.Println("other err:", err)
+            logger.Error("other err:", err)
         }
         return ""
     }
 
 	if !fileInfo.Mode().IsDir() {
-        fmt.Println("not dir")
+        logger.Error("not dir")
     }
 	return filename
 }
@@ -449,12 +456,12 @@ func checkAPIHealth(deviceId string, config Config) {
 		currentTimeString := currentTime.Format("2006-01-02 15:04:05")
 		healthMap := make(map[string][]string)
 		if err != nil {
-			fmt.Printf("Error checking API health: %v\n", err)
+			logger.Error("Error checking API health:", err)
 			healthMap[currentTimeString] = []string{"500"}
 			writeCSV(nil, deviceId, healthMap, config.Name)
 		} else {
 			if resp.StatusCode != http.StatusOK {
-				fmt.Printf("API is unhealthy! Status code: %d\n", resp.StatusCode)
+				logger.Info("API is unhealthy! Status code:", resp.StatusCode)
 				satusCodeStr := strconv.Itoa(resp.StatusCode)
 				healthMap[currentTimeString] = []string{satusCodeStr}
 				writeCSV(nil, deviceId, healthMap, config.Name)
@@ -478,21 +485,26 @@ func uploadStatus (filePath string, deviceId string, endpoint string, bucket str
 	currentTime := time.Now()
 	formatData := currentTime.Format("2006-01-02");
 	logger.Info("list local dir:", filePath)
-		files, err := os.ReadDir(filePath)
-		if err != nil {
+	files, err := os.ReadDir(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			logger.Error("start create dir:", filePath)
+			os.Create(filePath)
+		} else {
 			logger.Error("read all error:", err)
 		}
-		for _, file := range files {
-			if !file.IsDir() && isDate(file.Name()) {
-				err :=basics.Upload(bucket, formatData + "_" + deviceId, filePath + file.Name())
-				if err != nil {
-					continue
-				}
-				if (file.Name() != formatData) {
-					os.Remove(filePath + file.Name())
-				}
+	}
+	for _, file := range files {
+		if !file.IsDir() && isDate(file.Name()) {
+			err :=basics.Upload(bucket, formatData + "_" + deviceId, filePath + file.Name())
+			if err != nil {
+				continue
+			}
+			if (file.Name() != formatData) {
+				os.Remove(filePath + file.Name())
 			}
 		}
+	}
 }
 
 func initS3 (endpoint string, bucket string, region string) *s3.Client {
@@ -561,7 +573,8 @@ func (basics BucketBasics) Upload(bucketName string, objectKey string, fileName 
 					return err
 				}
 			} 
-		} else if !checkFileBetweenRemoteAndLocal(headResult, fileName) {
+		} 
+		if !checkFileBetweenRemoteAndLocal(headResult, fileName) {
 			logger.Info("check failed, start upload local data to remote:", fileName)
 			err :=basics.UploadFile(bucketName, objectKey, fileName)
 			logger.Info("check failed, end upload local data to remote:", fileName)
@@ -637,10 +650,10 @@ func (basics BucketBasics) Download(bucketName string, objectKey string, fileNam
 		if err != nil {
 			var bne *types.NotFound
 			if errors.As(err, &bne) {
-				logger.Info("remote data not exist, skip download:", fileName)	
+				logger.Info("remote data not exist, skip download:", fileName)
+				return
 			} 
-			return
-		}
+		} 
 		if !checkFileBetweenRemoteAndLocal(headResult, fileName) {
 			logger.Info("check failed, start fetch remote data to local:", fileName)
 			basics.DownloadFile(bucketName, objectKey, fileName)
