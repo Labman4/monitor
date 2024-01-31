@@ -279,7 +279,9 @@ func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
 		if (date != "") {
 			limitInt = len(fileNames) - 1
 		}
-		logger.Info("start read remote data:", fileNames[0] + "-" + fileNames[len(fileNames) - 1])
+		if len(fileNames) > 0 {
+			logger.Info("start read remote data:", fileNames[0] + "-" + fileNames[len(fileNames) - 1])
+		}
 		for i := 0; i < limitInt && i < len(fileNames); i++ {
 			if (date != "") {
 				if date != strings.Split(fileNames[i], "_")[0] {
