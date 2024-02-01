@@ -148,11 +148,11 @@ func main() {
 	})
 
 	r.PUT("/status", func(c *gin.Context) {
-		if c.GetHeader("Authorization") != "" {
-			if isValidToken(c.GetHeader("Authorization"), *config) {
+		// if c.GetHeader("Authorization") != "" {
+		// 	if isValidToken(c.GetHeader("Authorization"), *config) {
 				writeCSV(c, deviceId, nil, config.Name)
-			}
-		}
+		// 	}
+		// }
 	})
 
 	if (config.EnableQuery) {
