@@ -456,7 +456,7 @@ func checkAPIHealth(deviceId string, config Config) {
 	for range time.Tick(time.Duration(config.CheckDuration) * time.Second) {
 		resp, err := http.Get(config.MonitorUrl)
 		currentTime := time.Now()
-		currentTimeString := currentTime.Format("2006-01-02 15:04:05")
+		currentTimeString := currentTime.Format("2006-01-02 15:04:05 -0700")
 		healthMap := make(map[string][]string)
 		if err != nil {
 			logger.Error("Error checking API health:", err)
@@ -499,7 +499,7 @@ func uploadStatus (filePath string, deviceId string, endpoint string, bucket str
 	}
 	for _, file := range files {
 		if !file.IsDir() && isDate(file.Name()) {
-			err :=basics.Upload(bucket, formatData + "_" + deviceId, filePath + file.Name())
+			err := basics.Upload(bucket, formatData + "_" + deviceId, filePath + file.Name())
 			if err != nil {
 				continue
 			}
@@ -561,7 +561,7 @@ func (basics BucketBasics) CreateBucket(name string, region string) error {
 	return err
 }
 
-func (basics BucketBasics) Upload(bucketName string, objectKey string, fileName string) error{
+func (basics BucketBasics) Upload(bucketName string, objectKey string, fileName string) error {
 	_, err := os.Stat(fileName)
 	if err == nil {
 		logger.Info("file exist, start sync data between local with remote:", fileName)
@@ -575,9 +575,12 @@ func (basics BucketBasics) Upload(bucketName string, objectKey string, fileName 
 				if err != nil {
 					return err
 				}
-			} 
+				return nil
+			} else {
+				return err
+			}
 		} 
-		if !checkFileBetweenRemoteAndLocal(headResult, fileName) {
+	    if !checkFileBetweenRemoteAndLocal(headResult, fileName) {
 			logger.Info("check failed, start upload local data to remote:", fileName)
 			err :=basics.UploadFile(bucketName, objectKey, fileName)
 			logger.Info("check failed, end upload local data to remote:", fileName)
@@ -655,8 +658,8 @@ func (basics BucketBasics) Download(bucketName string, objectKey string, fileNam
 			if errors.As(err, &bne) {
 				logger.Info("remote data not exist, skip download, will remove local data to sync:", fileName)
 				os.Remove(fileName)
-				return
-			} 
+			}
+			return
 		} 
 		if !checkFileBetweenRemoteAndLocal(headResult, fileName) {
 			logger.Info("check failed, start fetch remote data to local:", fileName)
