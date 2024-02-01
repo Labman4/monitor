@@ -11,8 +11,9 @@
     "clientId": "", // oauth2 config
     "clientSecret": "", // oauth2 config
     "EnableCheck": false, // true/false
+    "EnableQuery": false, // true/false
     "CheckDuration": 100 // second
-    "UploadDuration": 1 // hour
+    "UploadDuration": 5 // minute
 }
 ```
 

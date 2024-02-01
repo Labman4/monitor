@@ -53,6 +53,7 @@ type Config struct {
 	ClientSecret string `json:"clientSecret"`
 	IntrospectUrl string `json:"introspectUrl"`
 	EnableCheck bool `json:"enableCheck"`
+	EnableQuery bool `json:"enableQuery"`
 	CheckDuration int `json:"checkDuration"`
 	UploadDuration int `json:"uploadDuration"`
 }
@@ -70,7 +71,6 @@ func getDeviceId() string {
 	}
 	return info.HostID
 }
-
 
 func isValidToken(token string, config Config) bool {
 	client := resty.New()
@@ -154,32 +154,34 @@ func main() {
 			}
 		}
 	})
-
-	r.GET("/status", func(c *gin.Context) {
-		statuses := readCSV(c, deviceId, *config)
-		var healthData []HealthData
-		var healthWithPrivateData []HealthWithPrivateData
-		var isPrivate bool
-		if c.GetHeader("Authorization") != "" {
-			if isValidToken(c.GetHeader("Authorization"), *config) {
-				isPrivate = true
+	
+	if (config.EnableQuery) {
+		r.GET("/status", func(c *gin.Context) {
+			statuses := readCSV(c, deviceId, *config)
+			var healthData []HealthData
+			var healthWithPrivateData []HealthWithPrivateData
+			var isPrivate bool
+			if c.GetHeader("Authorization") != "" {
+				if isValidToken(c.GetHeader("Authorization"), *config) {
+					isPrivate = true
+				}
 			}
-		}
-		for _, item := range statuses {
+			for _, item := range statuses {
+				if isPrivate {
+					healthWithPrivateData = append(
+						healthWithPrivateData,
+						HealthWithPrivateData{Timestamp: item[0], Status: item[1], Origin: item[2]})
+				} else {
+					healthData = append(healthData, HealthData{Timestamp: item[0], Status: item[1]})
+				}
+			}
 			if isPrivate {
-				healthWithPrivateData = append(
-					healthWithPrivateData,
-					HealthWithPrivateData{Timestamp: item[0], Status: item[1], Origin: item[2]})
+				c.JSON(http.StatusOK, healthWithPrivateData)
 			} else {
-				healthData = append(healthData, HealthData{Timestamp: item[0], Status: item[1]})
+				c.JSON(http.StatusOK, healthData)
 			}
-		}
-		if isPrivate {
-			c.JSON(http.StatusOK, healthWithPrivateData)
-		} else {
-			c.JSON(http.StatusOK, healthData)
-		}
-	})
+		})
+	}
 
 	go func() {
 		if err := r.Run(":11415"); err != nil {
@@ -476,7 +478,7 @@ func checkAPIHealth(deviceId string, config Config) {
 
 func scheduleUploadStatus(filePath string, deviceId string, config Config) {
 	uploadStatus(filePath, deviceId, config.Endpoint, config.Bucket, config.Region)
-	for range time.Tick(time.Duration(config.UploadDuration) * time.Hour) {
+	for range time.Tick(time.Duration(config.UploadDuration) * time.Minute) {
 		uploadStatus(filePath, deviceId, config.Endpoint, config.Bucket, config.Region)
 	}
 }
