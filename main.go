@@ -154,7 +154,7 @@ func main() {
 			}
 		}
 	})
-	
+
 	if (config.EnableQuery) {
 		r.GET("/status", func(c *gin.Context) {
 			statuses := readCSV(c, deviceId, *config)
@@ -199,6 +199,7 @@ func main() {
 }
 
 func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
+	//handle params
 	limit := c.Query("limit")
 	date := c.Query("date")
 	var limitInt int = 0
@@ -214,106 +215,110 @@ func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
 			return nil
 		}
 	}
+	if date != ""&& !isDate(date) {
+		return nil
+	}
+
 	dataPath := generateDatapath(config.Name)
 	dataRemotePath := generateRemoteDatapath(config.Name)
 	currentDate := time.Now()
 	formatData := currentDate.Format("2006-01-02");
-	if limitInt == 1 || date == formatData {
-		logger.Info("read from local")
-		singleData,err := readSingleFile(dataPath + date)
-		if err != nil{
-			return nil
-		} 
-		return singleData
-	} else {
-		client := initS3(config.Endpoint, config.Bucket, config.Region)
-		basics := BucketBasics{client}
-		bucketExist,err := basics.BucketExists(config.Bucket)
-		if err != nil {
-			logger.Error("BucketExists error:", err)
-			return nil
-		}
-		if !bucketExist {
-			basics.CreateBucket(config.Bucket, config.Region)
-		}
-		listObjects, err := basics.ListObjects(config.Bucket);
-		if err != nil {
-			logger.Error("listObject error:", err)
-			return nil
-		}
 
-		_, err = os.Stat(dataRemotePath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				logger.Error("start create dir:", dataRemotePath)
-				os.Create(dataRemotePath)
-			} else {
-				logger.Error("read all error:", err)
-				return nil
-			}	
+	//calucate date need fetch
+	var dates []string
+	dates = append(dates, formatData)
+	for i := 0 ; i< limitInt; i++ {
+		currentDate = currentDate.AddDate(0, 0, -1)
+		formatData := currentDate.Format("2006-01-02");
+		dates = append(dates, formatData)
+	}
+	logger.Info("will fetch data:", dates)
+
+	//check s3
+	client := initS3(config.Endpoint, config.Bucket, config.Region)
+	basics := BucketBasics{client}
+	bucketExist,err := basics.BucketExists(config.Bucket)
+	if err != nil {
+		logger.Error("BucketExists error:", err)
+		return nil
+	}
+	if !bucketExist {
+		basics.CreateBucket(config.Bucket, config.Region)
+	}
+	//
+	listObjects, err := basics.ListObjects(config.Bucket);
+	if err != nil {
+		logger.Error("listObject error:", err)
+		return nil
+	}
+
+	//sync with s3
+	for _, item := range listObjects {
+		if isDate(strings.Split(*item.Key, "_")[0]) {
+			basics.Download(config.Bucket, *item.Key, dataRemotePath + *item.Key)
 		}
-		
-		for _, item := range listObjects {
-			if isDate(strings.Split(*item.Key, "_")[0]) {
-				basics.Download(config.Bucket, *item.Key, dataRemotePath + *item.Key)
-			}
-		}
-		logger.Info("list remote dir:", dataRemotePath)
-		files, err := os.ReadDir(dataRemotePath)
-		if err != nil {
-			return nil
-		}
-		var fileNames []string
-		for _, file := range files {
-			if !file.IsDir() && isDate(strings.Split(file.Name(), "_")[0]) {
-				fileNames = append(fileNames, file.Name())
-				basics.Download(config.Bucket, file.Name(), dataRemotePath + file.Name())
-			}
-		}
-		if (len(fileNames) > 1) {
-			sort.Slice(fileNames, func(i, j int) bool {
-				timei, _ := time.Parse("2006-01-02", strings.Split(fileNames[i], "_")[0])
-				timej, _ := time.Parse("2006-01-02", strings.Split(fileNames[j], "_")[0])
-				return timei.Before(timej)
-			})
-		}
-		var statuses [][]string
-		if (date != "") {
-			limitInt = len(fileNames) - 1
-		}
-		if len(fileNames) > 0 {
-			logger.Info("start read remote data:", fileNames[0] + "-" + fileNames[len(fileNames) - 1])
-		}
-		for i := 0; i < limitInt && i < len(fileNames); i++ {
-			if (date != "") {
-				if date != strings.Split(fileNames[i], "_")[0] {
-					logger.Info("date mismatch, skip:", fileNames[i])
-					continue
+	}
+	//start read s3 data
+	logger.Info("list remote dir:", dataRemotePath)
+	files, err := os.ReadDir(dataRemotePath)
+	if err != nil {
+		return nil
+	}
+	var fileNames []string
+	for _, file := range files {
+		if !file.IsDir() && isDate(strings.Split(file.Name(), "_")[0]) {
+			// remove local file not exist in s3
+			err := basics.Download(config.Bucket, file.Name(), dataRemotePath + file.Name())
+			if err == nil {
+				fileDate := strings.Split(file.Name(), "_")[0];
+				if len(dates) > 0 {
+					flag := false
+					for _,d := range dates {
+						if strings.Split(file.Name(), "_")[0] == d {
+							flag = true
+						}
+					};
+					if flag {
+						fileNames = append(fileNames, file.Name())
+					}
+				} else if date != "" && date == fileDate {
+					fileNames = append(fileNames, file.Name())
 				}
 			}
-			file, err := os.Open(dataRemotePath + fileNames[i])
-			if err != nil {
-				logger.Error("read error:", fileNames[i])
-				return nil
-			}
-			defer file.Close()
-			reader := csv.NewReader(file)
-			status, err := reader.ReadAll()
-			statuses = append(statuses, status...)
-			if err != nil {
-				logger.Error("read err")
-				return nil
-			}		
 		}
-		if (date == "") {
-			stautsData, err := readSingleFile(dataPath + formatData);
-			if err != nil {
-				logger.Error("read today data err:", err)
-			}
-			statuses = append(statuses, stautsData...)
+	}
+	var statuses [][]string
+	if len(fileNames) > 0 {
+		logger.Info("start read local data from remote:", fileNames[0] + "----" + fileNames[len(fileNames) - 1])
+	}
+	for i := 0; i < len(fileNames); i++ {		
+		file, err := os.Open(dataRemotePath + fileNames[i])
+		if err != nil {
+			logger.Error("read error:", fileNames[i])
+			return nil
 		}
-		return statuses
-	}  
+		defer file.Close()
+		reader := csv.NewReader(file)
+		status, err := reader.ReadAll()
+		statuses = append(statuses, status...)
+		if err != nil {
+			logger.Error("read err")
+			return nil
+		}		
+	}
+	if (date == "" || date == formatData) {
+		stautsData, err := readSingleFile(dataPath + formatData);
+		if err != nil {
+			logger.Error("read today data err:", err)
+		}
+		statuses = append(statuses, stautsData...)
+	}
+	sort.Slice(statuses, func(i, j int) bool {
+		timei, _ := time.Parse("2006-01-02 15:04:05 -0700", statuses[i][0])
+		timej, _ := time.Parse("2006-01-02 15:04:05 -0700", statuses[j][0])
+		return timei.Before(timej)
+	})		
+	return statuses
 }
 
 func readSingleFile (filename string) ([][] string, error) {
@@ -604,14 +609,14 @@ func checkFileBetweenRemoteAndLocal (headResult *s3.HeadObjectOutput, fileName s
 		logger.Error("sha256 err:", err)
 	}
 	if headResult.ChecksumSHA256 != nil && *headResult.ChecksumSHA256 != ""  {
-		logger.Info("check sha256 remote:", headResult.ChecksumSHA256)	
-		logger.Info("check sha256 local:", local256)
+		logger.Debug("check sha256 remote:", headResult.ChecksumSHA256)	
+		logger.Debug("check sha256 local:", local256)
 		if headResult.ChecksumSHA256 != &local256 {
 			return false
 		}
 	} else if headResult.Metadata["x-amz-meta-sha256"] != "" {
-		logger.Info("check metadata remote:", headResult.Metadata["x-amz-meta-sha256"])
-		logger.Info("check metadata local:", local256)
+		logger.Debug("check metadata remote:", headResult.Metadata["x-amz-meta-sha256"])
+		logger.Debug("check metadata local:", local256)
 		if headResult.Metadata["x-amz-meta-sha256"] != local256 {
 			return false
 		}
@@ -650,7 +655,7 @@ func (basics BucketBasics) UploadFile(bucketName string, objectKey string, fileN
 	return err
 }
 
-func (basics BucketBasics) Download(bucketName string, objectKey string, fileName string) {
+func (basics BucketBasics) Download(bucketName string, objectKey string, fileName string) error {
 	_, err := os.Stat(fileName)
 	if err == nil {
 		logger.Info("file exist, start sync data between local with remote:", fileName)
@@ -660,8 +665,9 @@ func (basics BucketBasics) Download(bucketName string, objectKey string, fileNam
 			if errors.As(err, &bne) {
 				logger.Info("remote data not exist, skip download, will remove local data to sync:", fileName)
 				os.Remove(fileName)
+				return err
 			}
-			return
+			return nil	
 		} 
 		if !checkFileBetweenRemoteAndLocal(headResult, fileName) {
 			logger.Info("check failed, start fetch remote data to local:", fileName)
@@ -673,6 +679,7 @@ func (basics BucketBasics) Download(bucketName string, objectKey string, fileNam
 	} else {
 		logger.Error("Error checking file existence:", err)
 	}
+	return nil
 }
 
 func (basics BucketBasics) DownloadFile(bucketName string, objectKey string, fileName string) error {
