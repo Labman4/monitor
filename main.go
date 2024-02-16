@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"net"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -54,6 +55,7 @@ type Config struct {
 	IntrospectUrl string `json:"introspectUrl"`
 	EnableCheck bool `json:"enableCheck"`
 	EnableQuery bool `json:"enableQuery"`
+	EnableUpload bool `json:"enableUpload"`
 	CheckDuration int `json:"checkDuration"`
 	UploadDuration int `json:"uploadDuration"`
 }
@@ -142,6 +144,20 @@ func main() {
 		c.Next()
 	})
 
+	r.POST("/wol", func(c *gin.Context) {
+		if c != nil {
+			parseErr := c.Request.ParseForm()
+			if parseErr != nil {
+				c.String(http.StatusBadRequest, "Failed to parse form data")
+				return 
+			}
+		}
+		mac := c.Request.Form.Get("mac")
+		logger.Info("mac:", mac)
+		err := wakeOnLAN(mac)
+		logger.Error("wol err:", err)
+	})
+
 	r.GET("/", func(c *gin.Context) {
 		clientIP := c.ClientIP()
 		c.String(http.StatusOK, clientIP)
@@ -193,8 +209,9 @@ func main() {
 		go checkAPIHealth(deviceId, *config)
 	}
 
-	go scheduleUploadStatus(generateDatapath(config.Name), deviceId, *config)
-
+	if config.EnableUpload {
+		go scheduleUploadStatus(generateDatapath(config.Name), deviceId, *config)
+	}
 	select {}
 }
 
@@ -748,4 +765,36 @@ func calculateSHA256(filePath string) (string, error) {
 	hashString := hex.EncodeToString(hashInBytes)
 
 	return hashString, nil
+}
+
+func wakeOnLAN(macAddr string) error {
+    mac, err := net.ParseMAC(macAddr)
+    if err != nil {
+        return err
+    }
+
+    magicPacket := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+    for i := 0; i < 16; i++ {
+        magicPacket = append(magicPacket, mac...)
+    }
+	
+	broadcastAddr := net.IPv4(255, 255, 255, 255)
+
+	udpAddr := &net.UDPAddr{
+		IP:   broadcastAddr,
+		Port: 9,
+	}
+	logger.Info("udp addr:", udpAddr)
+    conn, err := net.DialUDP("udp", nil, udpAddr)
+    if err != nil {
+        return err
+    }
+    defer conn.Close()
+
+    _, err = conn.Write(magicPacket)
+    if err != nil {
+        return err
+    }
+
+    return nil
 }
