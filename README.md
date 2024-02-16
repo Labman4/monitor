@@ -12,6 +12,7 @@
     "clientSecret": "", // oauth2 config
     "EnableCheck": false, // true/false
     "EnableQuery": false, // true/false
+    "EnableUpload": false, // true/false
     "CheckDuration": 100 // second
     "UploadDuration": 5 // minute
 }

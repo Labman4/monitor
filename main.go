@@ -768,33 +768,50 @@ func calculateSHA256(filePath string) (string, error) {
 }
 
 func wakeOnLAN(macAddr string) error {
-    mac, err := net.ParseMAC(macAddr)
-    if err != nil {
+    interfaces, err := net.Interfaces()
+	if err != nil {
         return err
     }
-
-    magicPacket := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
-    for i := 0; i < 16; i++ {
-        magicPacket = append(magicPacket, mac...)
-    }
-	
+	logger.Info("list interfaces:", interfaces)
+	mac, err := net.ParseMAC(macAddr)
 	broadcastAddr := net.IPv4(255, 255, 255, 255)
-
 	udpAddr := &net.UDPAddr{
 		IP:   broadcastAddr,
 		Port: 9,
 	}
-	logger.Info("udp addr:", udpAddr)
-    conn, err := net.DialUDP("udp", nil, udpAddr)
     if err != nil {
         return err
     }
-    defer conn.Close()
+	magicPacket := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+	for i := 0; i < 16; i++ {
+		magicPacket = append(magicPacket, mac...)
+	}
 
-    _, err = conn.Write(magicPacket)
-    if err != nil {
-        return err
+    for _, iface := range interfaces {
+        if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
+            continue
+        }
+
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return err
+		}
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+				ipv4Addr := ipnet.IP.To4()
+				logger.Info("bind addr:", ipv4Addr)
+				conn, err := net.DialUDP("udp", &net.UDPAddr{IP: ipv4Addr, Port: 0}, udpAddr)
+				if err != nil {
+					return err
+				}
+				defer conn.Close()
+			
+				_, err = conn.Write(magicPacket)
+				if err != nil {
+					return err
+				}
+			}		
+		}
     }
-
     return nil
 }
