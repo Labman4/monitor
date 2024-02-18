@@ -10,11 +10,16 @@
     "introspectUrl": "", // oauth2 config
     "clientId": "", // oauth2 config
     "clientSecret": "", // oauth2 config
-    "EnableCheck": false, // true/false
-    "EnableQuery": false, // true/false
-    "EnableUpload": false, // true/false
-    "CheckDuration": 100 // second
-    "UploadDuration": 5 // minute
+    "enableCheck": false, // true/false
+    "enableQuery": false, // true/false
+    "enableUpload": false, // true/false
+    "enableWol": false, // true/false
+    "checkDuration": 100 // second
+    "uploadDuration": 5 // minute
+    "password": "" //vault userpass passwd
+    "username": "" //vault userpass user
+    "vaultUri": "" //vault uri
+
 }
 ```
 

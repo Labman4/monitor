@@ -56,8 +56,13 @@ type Config struct {
 	EnableCheck bool `json:"enableCheck"`
 	EnableQuery bool `json:"enableQuery"`
 	EnableUpload bool `json:"enableUpload"`
+	EnableWol bool `json:"enableWol"`
 	CheckDuration int `json:"checkDuration"`
 	UploadDuration int `json:"uploadDuration"`
+	Password string `json:"password"`
+	Username string `json:"username"`
+	VaultUri string `json:"vaultUri"`
+
 }
 
 type Introspect struct {
@@ -65,52 +70,6 @@ type Introspect struct {
 }
 
 var logger = logrus.New()
-
-func getDeviceId() string {
-	info, err := host.Info()
-	if err !=nil {
-		return ""
-	}
-	return info.HostID
-}
-
-func isValidToken(token string, config Config) bool {
-	client := resty.New()
-
-	resp, err := client.R().
-		SetHeader("Content-Type", "application/x-www-form-urlencoded").
-		SetBasicAuth(config.ClientId, config.ClientSecret).
-		SetFormData(map[string]string{
-			"token": token,
-		}).
-		Post(config.IntrospectUrl)
-
-	if err != nil {
-		logger.Error("introspect err:", err)
-		return false
-	}
-	var result Introspect
-	err = json.Unmarshal(resp.Body(), &result)
-	if err != nil {
-		return false
-	}
-	return result.Active
-}
-
-func readConfigFile(filePath string) (*Config, error) {
-	fileContent, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, err
-	}
-
-	var config Config
-	err = json.Unmarshal(fileContent, &config)
-	if err != nil {
-		return nil, err
-	}
-
-	return &config, nil
-}
 
 func main() {
 	deviceId := getDeviceId()
@@ -143,21 +102,28 @@ func main() {
 		}
 		c.Next()
 	})
-
-	r.POST("/wol", func(c *gin.Context) {
-		if c != nil {
-			parseErr := c.Request.ParseForm()
-			if parseErr != nil {
-				c.String(http.StatusBadRequest, "Failed to parse form data")
-				return 
+	if (config.EnableWol) {
+		r.POST("/wol", func(c *gin.Context) {
+			if c != nil {
+				parseErr := c.Request.ParseForm()
+				if parseErr != nil {
+					c.String(http.StatusBadRequest, "Failed to parse form data")
+					return 
+				}
 			}
-		}
-		mac := c.Request.Form.Get("mac")
-		logger.Info("mac:", mac)
-		err := wakeOnLAN(mac)
-		logger.Error("wol err:", err)
-	})
-
+			mac := c.Request.Form.Get("mac")
+			code := c.Request.Form.Get("code")
+			logger.Info("mac:", mac)
+			logger.Info("code:", code)
+			if (validateTotp(code, *config)) {
+				err := wakeOnLAN(mac)
+				logger.Error("wol err:", err)
+			} else {
+				logger.Warn("code mismatch")
+			}			
+		})
+	}
+	
 	r.GET("/", func(c *gin.Context) {
 		clientIP := c.ClientIP()
 		c.String(http.StatusOK, clientIP)
@@ -213,6 +179,53 @@ func main() {
 		go scheduleUploadStatus(generateDatapath(config.Name), deviceId, *config)
 	}
 	select {}
+}
+
+func getDeviceId() string {
+	info, err := host.Info()
+	if err !=nil {
+		return ""
+	}
+	return info.HostID
+}
+
+func isValidToken(token string, config Config) bool {
+	client := resty.New()
+
+	resp, err := client.R().
+		SetHeader("Content-Type", "application/x-www-form-urlencoded").
+		SetBasicAuth(config.ClientId, config.ClientSecret).
+		SetFormData(map[string]string{
+			"token": token,
+		}).
+		Post(config.IntrospectUrl)
+
+	if err != nil {
+		logger.Error("introspect err:", err)
+		return false
+	}
+	var result map[string]interface{}
+	err = json.Unmarshal(resp.Body(), &result)
+	if err != nil {
+		return false
+	}
+	active := result["Active"].(bool)
+	return active
+}
+
+func readConfigFile(filePath string) (*Config, error) {
+	fileContent, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var config Config
+	err = json.Unmarshal(fileContent, &config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &config, nil
 }
 
 func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
@@ -765,6 +778,51 @@ func calculateSHA256(filePath string) (string, error) {
 	hashString := hex.EncodeToString(hashInBytes)
 
 	return hashString, nil
+}
+
+func validateTotp (code string, config Config) bool{
+	client := resty.New()
+	body := map[string]string{
+		"password": config.Password,
+	}
+	loginResp, err := client.R().
+	SetHeader("Content-Type", "application/json").
+	SetBody(body).Post(config.VaultUri + "/v1/auth/userpass/login/" + config.Username)
+	if err != nil {
+		logger.Error("login vault err:", err)
+		return false
+	}
+	logger.Info("login vault resp:", loginResp.String())
+	var data map[string]interface{}
+    err = json.Unmarshal(loginResp.Body(), &data)
+    if err != nil {
+        logger.Error("Error decoding JSON:", err)
+        return false
+    }
+
+	token :=  data["auth"].(map[string]interface{})["client_token"].(string)
+	logger.Info("vault token:", token)
+
+	resp, err := client.R().
+		SetHeader("X-Vault-Token", token).
+		Get(config.VaultUri + "/v1/totp/code/" + config.Username)
+		logger.Info("vault token:", resp.String())
+
+	if err != nil {
+		logger.Error("get code err:", err)
+		return false
+	}
+	var codeData map[string]interface{}
+	err = json.Unmarshal(resp.Body(), &codeData)
+	if err != nil {
+		return false
+	}
+	c :=  codeData["data"].(map[string]interface{})["code"].(string)
+	if (code == c) {
+		return true
+	} else {
+		return false
+	}
 }
 
 func wakeOnLAN(macAddr string) error {
