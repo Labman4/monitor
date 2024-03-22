@@ -289,6 +289,10 @@ func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
 	}
 	//calucate date need fetch
 	var dates []string
+	dataPath := generateDatapath(config.Name)
+	dataRemotePath := generateRemoteDatapath(config.Name)
+	currentDate := time.Now()
+	formatData := currentDate.Format("2006-01-02");
 	if date != "" {
 		if !isDate(date) {
 			return nil
@@ -296,11 +300,7 @@ func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
 			dates = append(dates, date)
 			checkFlag = true
 		}
-	} else {
-		dataPath := generateDatapath(config.Name)
-		dataRemotePath := generateRemoteDatapath(config.Name)
-		currentDate := time.Now()
-		formatData := currentDate.Format("2006-01-02");
+	} else {	
 		dates = append(dates, formatData)
 		for i := 0 ; i< limitInt; i++ {
 			currentDate = currentDate.AddDate(0, 0, -1)
