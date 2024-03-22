@@ -14,10 +14,15 @@
     "enableQuery": false, // true/false
     "enableUpload": false, // true/false
     "enableWol": false, // true/false
-    "checkDuration": 100 // second
-    "uploadDuration": 5 // minute
-    "password": "" //vault userpass passwd
-    "username": "" //vault userpass user
+    "enableSync": false, // true/false
+    "enableUpload": false, // true/false
+    "enableWol": false, // true/false
+    "forceSync": false,// true/false if set false, only fetch data which not exist local (recommend), true will check all data sha256
+    "checkDuration": 100, // second
+    "uploadDuration": 5, // minute
+    "syncDuration": 100, // minute
+    "password": "", //vault userpass passwd
+    "username": "", //vault userpass user
     "vaultUri": "" //vault uri
 
 }

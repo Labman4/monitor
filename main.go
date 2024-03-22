@@ -318,7 +318,8 @@ func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
 		basics.CreateBucket(config.Bucket, config.Region)
 	}
 	//start read s3 data
-	logger.Info("list remote dir:", dataRemotePath)
+	logger.Info("list remote dir", dataRemotePath)
+	logger.Info("forceCheck", checkFlag)
 	files, err := os.ReadDir(dataRemotePath)
 	if err != nil {
 		return nil
