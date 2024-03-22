@@ -287,26 +287,28 @@ func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
 	if limitInt == 1 {
 		checkFlag = true
 	}
-	if date != "" && !isDate(date) {
+	//calucate date need fetch
+	var dates []string
+	if date != "" {
 		if !isDate(date) {
 			return nil
 		} else {
+			dates = append(dates, date)
 			checkFlag = true
 		}
-	}
-	dataPath := generateDatapath(config.Name)
-	dataRemotePath := generateRemoteDatapath(config.Name)
-	currentDate := time.Now()
-	formatData := currentDate.Format("2006-01-02");
-
-	//calucate date need fetch
-	var dates []string
-	dates = append(dates, formatData)
-	for i := 0 ; i< limitInt; i++ {
-		currentDate = currentDate.AddDate(0, 0, -1)
+	} else {
+		dataPath := generateDatapath(config.Name)
+		dataRemotePath := generateRemoteDatapath(config.Name)
+		currentDate := time.Now()
 		formatData := currentDate.Format("2006-01-02");
 		dates = append(dates, formatData)
+		for i := 0 ; i< limitInt; i++ {
+			currentDate = currentDate.AddDate(0, 0, -1)
+			formatData := currentDate.Format("2006-01-02");
+			dates = append(dates, formatData)
+		}
 	}
+
 	logger.Info("will fetch data:", dates)
 
 	//check s3
