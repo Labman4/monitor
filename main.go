@@ -322,7 +322,7 @@ func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
 	}
 	//start read s3 data
 	logger.Info("list remote dir", dataRemotePath)
-	logger.Info("forceCheck", checkFlag)
+	logger.Info("forceCheck: ", checkFlag)
 	files, err := os.ReadDir(dataRemotePath)
 	if err != nil {
 		return nil
@@ -331,14 +331,17 @@ func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
 	for _, file := range files {
 		if !file.IsDir() && isDate(strings.Split(file.Name(), "_")[0]) {
 			// remove local file not exist in s3
-			err := basics.Download(config.Bucket, file.Name(), dataRemotePath + file.Name(), checkFlag)
+			err := basics.Download(config.Bucket, file.Name(), dataRemotePath + file.Name(), false)
 			if err == nil {
 				fileDate := strings.Split(file.Name(), "_")[0];
 				if len(dates) > 0 {
 					flag := false
-					for _,d := range dates {
+					for _,d := range dates {	
 						if strings.Split(file.Name(), "_")[0] == d {
 							flag = true
+							if (checkFlag) {
+								err := basics.Download(config.Bucket, file.Name(), dataRemotePath + file.Name(), checkFlag)
+							}
 						}
 					};
 					if flag {
