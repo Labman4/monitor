@@ -58,6 +58,7 @@ type Config struct {
 	EnableUpload bool `json:"enableUpload"`
 	EnableSync bool `json:"enableSync"`
 	EnableWol bool `json:"enableWol"`
+	forceSync bool `json:"forceSync"`
 	CheckDuration int `json:"checkDuration"`
 	UploadDuration int `json:"uploadDuration"`
 	SyncDuration int `json:"syncDuration"`
@@ -257,7 +258,7 @@ func sync(deviceId string, config Config) {
 		//sync with s3
 		for _, item := range listObjects {
 			if isDate(strings.Split(*item.Key, "_")[0]) {
-				basics.Download(config.Bucket, *item.Key, dataRemotePath + *item.Key, true)
+				basics.Download(config.Bucket, *item.Key, dataRemotePath + *item.Key, config.forceSync)
 			}
 		}
 	}
