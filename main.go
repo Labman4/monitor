@@ -340,7 +340,7 @@ func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
 						if strings.Split(file.Name(), "_")[0] == d {
 							flag = true
 							if (checkFlag) {
-								err := basics.Download(config.Bucket, file.Name(), dataRemotePath + file.Name(), checkFlag)
+								basics.Download(config.Bucket, file.Name(), dataRemotePath + file.Name(), checkFlag)
 							}
 						}
 					};
