@@ -237,6 +237,8 @@ func readConfigFile(filePath string) (*Config, error) {
 }
 
 func sync(deviceId string, config Config) {
+	logger.Info("sync option force:", config.forceSync)
+	logger.Info("sync option duration:", config.SyncDuration)
 	for range time.Tick(time.Duration(config.SyncDuration) * time.Minute) {
 		//check s3
 		client := initS3(config.Endpoint, config.Bucket, config.Region)
@@ -282,13 +284,14 @@ func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
 			return nil
 		}
 	}
-	if date != ""&& !isDate(date) {
+	if limitInt == 1 {
+		checkFlag = true
+	}
+	if date != "" && !isDate(date) {
 		if !isDate(date) {
 			return nil
 		} else {
-			if limitInt == 1 {
-				checkFlag = true
-			}
+			checkFlag = true
 		}
 	}
 	dataPath := generateDatapath(config.Name)
