@@ -302,7 +302,7 @@ func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
 		}
 	} else {	
 		dates = append(dates, formatData)
-		for i := 0 ; i< limitInt; i++ {
+		for i := 0 ; i< limitInt - 1; i++ {
 			currentDate = currentDate.AddDate(0, 0, -1)
 			formatData := currentDate.Format("2006-01-02");
 			dates = append(dates, formatData)
