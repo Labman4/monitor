@@ -132,6 +132,11 @@ func main() {
 		c.String(http.StatusOK, clientIP)
 	})
 
+	r.GET("/ip", func(c *gin.Context) {
+		clientIP := c.ClientIP()
+		c.String(http.StatusOK, clientIP)
+	})
+
 	r.PUT("/status", func(c *gin.Context) {
 		// if c.GetHeader("Authorization") != "" {
 		// 	if isValidToken(c.GetHeader("Authorization"), *config) {
@@ -302,7 +307,7 @@ func readCSV(c *gin.Context, deviceId string, config Config) [][]string {
 		}
 	} else {	
 		dates = append(dates, formatData)
-		for i := 0 ; i< limitInt - 1; i++ {
+		for i := 0 ; i < limitInt - 1; i++ {
 			currentDate = currentDate.AddDate(0, 0, -1)
 			formatData := currentDate.Format("2006-01-02");
 			dates = append(dates, formatData)
