@@ -151,7 +151,7 @@ func main() {
 			var healthData []HealthData
 			var healthWithPrivateData []HealthWithPrivateData
 			var isPrivate bool
-			if c.GetHeader("Authorization") != "" {
+			if c.GetHeader("Authorization") != "" && c.GetHeader("Authorization") != "*" {
 				if isValidToken(c.GetHeader("Authorization"), *config) {
 					isPrivate = true
 				}
