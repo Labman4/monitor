@@ -222,7 +222,7 @@ func isValidToken(token string, config Config) bool {
 	if err != nil {
 		return false
 	}
-	if result != nil {
+	if result["Active"] != nil {
 		active := result["Active"].(bool)
 		return active
 	}
