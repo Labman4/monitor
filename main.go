@@ -222,8 +222,11 @@ func isValidToken(token string, config Config) bool {
 	if err != nil {
 		return false
 	}
-	active := result["Active"].(bool)
-	return active
+	if result != nil {
+		active := result["Active"].(bool)
+		return active
+	}
+	return false
 }
 
 func readConfigFile(filePath string) (*Config, error) {
