@@ -489,7 +489,8 @@ func writeCSV(c *gin.Context, deviceId string, dataMap map[string][]string, name
 
 func reportIp(config types.Config) {
 	logger.Info("start report instance ip:", config.IpCheckUrl)
-	for range time.Tick(time.Duration(config.ReportDuration) * time.Second) {
+	vault.ReportIpByCheck(config)
+	for range time.Tick(time.Duration(config.ReportDuration) * time.Hour) {
 		vault.ReportIpByCheck(config)
 	}
 }
