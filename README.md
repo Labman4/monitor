@@ -6,25 +6,27 @@
     "bucket": "", // s3 config
     "region": "", // s3 config
     "monitorUrl": "", // which url can return statuscode normally
+    "ipCheckUrl": "",
     "name": "monitor", // any
     "introspectUrl": "", // oauth2 config
     "clientId": "", // oauth2 config
     "clientSecret": "", // oauth2 config
     "enableCheck": false, // true/false
+    "enableIpCheck": false, // true/false
     "enableQuery": false, // true/false
     "enableUpload": false, // true/false
-    "enableWol": false, // true/false
     "enableSync": false, // true/false
-    "enableUpload": false, // true/false
     "enableWol": false, // true/false
     "forceSync": false,// true/false if set false, only fetch data which not exist local (recommend), true will check all data sha256
     "checkDuration": 100, // second
     "uploadDuration": 5, // minute
     "syncDuration": 100, // minute
+    "reportDuration": 6,// hour
     "password": "", //vault userpass passwd
     "username": "", //vault userpass user
-    "vaultUri": "" //vault uri
-
+    "vaultUri": "", //vault uri
+    "vaultConfigPath": "" ,//vault kv path
+    "vaultCustomKey": ""//vault config update key
 }
 ```
 
