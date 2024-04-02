@@ -13,10 +13,10 @@ var logger = logrus.New()
 func ValidateTotp (code string, config types.Config) bool {
 	client := resty.New()
 
-	token := login(config)
+	token := login(config, true)
 	resp, err := client.R().
 		SetHeader("X-Vault-Token", token).
-		Get(config.VaultUri + "/v1/totp/code/" + config.Username)
+		Get(config.VaultCloudUri + "/v1/totp/code/" + config.Username)
 		logger.Info("vault token:", resp.String())
 
 	if err != nil {
@@ -38,7 +38,7 @@ func ValidateTotp (code string, config types.Config) bool {
 
 func ReportIpByCheck (config types.Config) {
 	client := resty.New()
-	token := login(config)
+	token := login(config, false)
 	if token != "" {
 		logger.Info ("current config path: {}, key: {} ", config.VaultUri + config.VaultConfigPath, config.VaultCustomKey)
 		resp, err := client.R().
@@ -83,16 +83,22 @@ func ReportIpByCheck (config types.Config) {
 	}	
 }
 
-func login(config types.Config) string {
+func login(config types.Config, online bool) string {
 	client := resty.New()
 
 	body := map[string]string{
 		"password": config.Password,
 	}
+	var serverUri string;
+	if online {
+		serverUri = config.VaultCloudUri
+	} else {
+		serverUri = config.VaultUri
 
+	}
 	loginResp, err := client.R().
 		SetHeader("Content-Type", "application/json").
-		SetBody(body).Post(config.VaultUri + "/v1/auth/userpass/login/" + config.Username)
+		SetBody(body).Post(serverUri + "/v1/auth/userpass/login/" + config.Username)
 
 	if err != nil {
 		logger.Error("login vault err:", err)

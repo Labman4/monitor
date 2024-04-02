@@ -43,6 +43,7 @@ type Config struct {
 	Password string `json:"password"`
 	Username string `json:"username"`
 	VaultUri string `json:"vaultUri"`
+	VaultCloudUri string `json:"vaultCloudUri"`
     VaultConfigPath string `json:"vaultConfigPath"`
 	VaultCustomKey string `json:"vaultCustomKey"`
 }
