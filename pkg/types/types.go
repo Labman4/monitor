@@ -42,6 +42,7 @@ type Config struct {
 	ReportDuration int `json:"reportDuration"`
 	Password string `json:"password"`
 	Username string `json:"username"`
+	VaultPublicUser string `json:"vaultPublicUser"`
 	VaultUri string `json:"vaultUri"`
 	VaultCloudUri string `json:"vaultCloudUri"`
     VaultConfigPath string `json:"vaultConfigPath"`

@@ -16,8 +16,8 @@ func ValidateTotp (code string, config types.Config) bool {
 	token := login(config, true)
 	resp, err := client.R().
 		SetHeader("X-Vault-Token", token).
-		Get(config.VaultCloudUri + "/v1/totp/code/" + config.Username)
-		logger.Info("vault token:", resp.String())
+		Get(config.VaultCloudUri + "/v1/totp/code/" + config.VaultPublicUser)
+		logger.Info("totp resp:", resp.String())
 
 	if err != nil {
 		logger.Error("get code err:", err)

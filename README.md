@@ -24,6 +24,7 @@
     "reportDuration": 6,// hour
     "password": "", //vault userpass passwd
     "username": "", //vault userpass user
+    "vaultPublicUser": "", //vault user for wol
     "vaultUri": "", //vault server uri
     "vaultCloudUri": "", //vault online uri for wol
     "vaultConfigPath": "" ,//vault kv path
