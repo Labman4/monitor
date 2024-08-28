@@ -65,20 +65,41 @@ func ReportIpByCheck (config types.Config) {
 		}
 
 		checkResp, err := client.R().Get(config.IpCheckUrl)
-		logger.Info("ip check result ", checkResp.String())
-		if !strings.Contains(currentConfigKey, checkResp.String()) {
-			data["data"].(map[string]interface{})["data"].(map[string]interface{})[config.VaultCustomKey] =  currentConfigKey + "," + checkResp.String()
+		if err != nil {
+			logger.Error("failed to get IP check response", err)
+			return
+		}
+
+		ip := checkResp.String()
+		logger.Info("ip check result ", ip)
+
+		currentIps := strings.Split(currentConfigKey, ",")
+		isIpExist := false
+
+		for _, currentIp := range currentIps {
+			if ip == currentIp {
+				isIpExist = true
+				break
+			}
+		}
+
+		if !isIpExist {
+			newIps := currentConfigKey + "," + ip
+			data["data"].(map[string]interface{})["data"].(map[string]interface{})[config.VaultCustomKey] = newIps
 			logger.Debug("modify config kv ", data["data"].(map[string]interface{})["data"].(map[string]interface{})[config.VaultCustomKey])
+			
 			reportResp, err := client.R().
 				SetHeader("X-Vault-Token", token).
 				SetBody(data["data"].(map[string]interface{})).
 				Post(config.VaultUri + config.VaultConfigPath)
+				
 			if err != nil {
-				logger.Error("modift config err", err)
+				logger.Error("modify config err", err)
+			} else {
+				logger.Info("report result:", reportResp.String())
 			}
-			logger.Info("report result:", reportResp.String())
 		} else {
-			logger.Info("already exist, skip report")
+			logger.Info("IP already exists, skipping report")
 		}
 	}	
 }
