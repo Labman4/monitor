@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
+	"crypto/tls"
 	"encoding/csv"
 	"encoding/json"
+	"net"
 	"net/http"
 	"os"
 	"runtime"
@@ -10,15 +13,20 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"net"
-	"github.com/gin-gonic/gin"
-	"github.com/shirou/gopsutil/host"
-	"github.com/sirupsen/logrus"
-	"github.com/go-resty/resty/v2"
+
+	"github.com/pires/go-proxyproto"
+
+	"elpsykongroo.com/monitor/pkg/s3"
 	"elpsykongroo.com/monitor/pkg/types"
 	"elpsykongroo.com/monitor/pkg/vault"
-	"elpsykongroo.com/monitor/pkg/s3"
+	"github.com/caddyserver/certmagic"
+	"github.com/gin-gonic/gin"
+	"github.com/go-resty/resty/v2"
+	"github.com/libdns/cloudflare"
+	"github.com/shirou/gopsutil/host"
+	"github.com/sirupsen/logrus"
 )
+
 var logger = logrus.New()
 
 func main() {
@@ -28,10 +36,10 @@ func main() {
 		logger.Error("get home path errpr")
 		return
 	}
-	var configFilePath string 
-	operateSystem := runtime.GOOS;
+	var configFilePath string
+	operateSystem := runtime.GOOS
 	if operateSystem == "windows" {
-		configFilePath =  homePath + `\.aws\` + `config.json`
+		configFilePath = homePath + `\.aws\` + `config.json`
 	} else {
 		configFilePath = homePath + `/.aws/` + `config.json`
 	}
@@ -52,28 +60,28 @@ func main() {
 		}
 		c.Next()
 	})
-	if (config.EnableWol) {
+	if config.EnableWol {
 		r.POST("/wol", func(c *gin.Context) {
 			if c != nil {
 				parseErr := c.Request.ParseForm()
 				if parseErr != nil {
 					c.String(http.StatusBadRequest, "Failed to parse form data")
-					return 
+					return
 				}
 			}
 			mac := c.Request.Form.Get("mac")
 			code := c.Request.Form.Get("code")
 			logger.Info("mac:", mac)
 			logger.Info("code:", code)
-			if (vault.ValidateTotp(code, *config)) {
+			if vault.ValidateTotp(code, *config) {
 				err := wakeOnLAN(mac)
 				logger.Error("wol err:", err)
 			} else {
 				logger.Warn("code mismatch")
-			}			
+			}
 		})
 	}
-	
+
 	r.GET("/", func(c *gin.Context) {
 		clientIP := c.ClientIP()
 		c.String(http.StatusOK, clientIP)
@@ -87,12 +95,12 @@ func main() {
 	r.PUT("/status", func(c *gin.Context) {
 		// if c.GetHeader("Authorization") != "" {
 		// 	if isValidToken(c.GetHeader("Authorization"), *config) {
-				writeCSV(c, deviceId, nil, config.Name)
+		writeCSV(c, deviceId, nil, config.Name)
 		// 	}
 		// }
 	})
 
-	if (config.EnableQuery) {
+	if config.EnableQuery {
 		r.GET("/status", func(c *gin.Context) {
 			statuses := readCSV(c, deviceId, *config)
 			var healthData []types.HealthData
@@ -119,13 +127,67 @@ func main() {
 			}
 		})
 	}
+	if config.CfToken == "" {
+		logger.Error("Cloudflare API Token error")
+	}
+
+	magic := certmagic.NewDefault()
+	dnsACME := certmagic.NewACMEIssuer(magic, certmagic.ACMEIssuer{
+		DNS01Solver: &certmagic.DNS01Solver{
+			DNSManager: certmagic.DNSManager{
+				DNSProvider: &cloudflare.Provider{
+					APIToken: config.CfToken,
+				},
+			},
+		},
+		Email:                   config.AcmeEmail,
+		CA:                      certmagic.LetsEncryptProductionCA,
+		Agreed:                  true,
+		DisableHTTPChallenge:    true,
+		DisableTLSALPNChallenge: true,
+	})
+
+	magic.Issuers = []certmagic.Issuer{dnsACME}
+	magic.ManageSync(context.Background(), []string{config.AcmeDomain})
+
+	tlsConfig := magic.TLSConfig()
+	tlsConfig.NextProtos = []string{"http/1.1", "h2"}
+	listener, err := net.Listen("tcp", ":11415")
+
+	if err != nil {
+		logger.Error("listen err:", err)
+	}
+	proxyListener := &proxyproto.Listener{
+		Listener: listener,
+	}
+	defer proxyListener.Close()
+
+	conn, err := proxyListener.Accept()
+	defer conn.Close()
+
+	if conn.LocalAddr() == nil {
+		logger.Error("couldn't retrieve local address")
+	}
+	logger.Info("local address:", conn.LocalAddr().String())
+
+	if conn.RemoteAddr() == nil {
+		logger.Error("couldn't retrieve remote address")
+	}
+	logger.Info("remote address:", conn.RemoteAddr().String())
+
+	tlsListener := tls.NewListener(proxyListener, tlsConfig)
+
+	server := &http.Server{
+		Handler: r,
+	}
 
 	go func() {
-		if err := r.Run(":11415"); err != nil {
-			logger.Error("Error starting server:", err)
+		err = server.Serve(tlsListener)
+		if err != nil {
+			logger.Error("serve err", err)
 		}
 	}()
-	
+
 	if config.EnableCheck {
 		go checkAPIHealth(deviceId, *config)
 	}
@@ -161,14 +223,14 @@ func readConfigFile(filePath string) (*types.Config, error) {
 
 func getDeviceId() string {
 	info, err := host.Info()
-	if err !=nil {
+	if err != nil {
 		return ""
 	}
 	return info.HostID
 }
 
-func readSingleFile (filename string) ([][] string, error) {
-	_,err := os.Stat(filename)
+func readSingleFile(filename string) ([][]string, error) {
+	_, err := os.Stat(filename)
 	if err == nil {
 		file, err := os.Open(filename)
 		if err != nil {
@@ -179,30 +241,30 @@ func readSingleFile (filename string) ([][] string, error) {
 		status, err := reader.ReadAll()
 		if err != nil {
 			return nil, err
-		}	
+		}
 		return status, nil
 	} else {
-		return nil, err	
+		return nil, err
 	}
 }
 
-func generateDatapath (name string) string {
-	operateSystem := runtime.GOOS;
-	filename := "/var/log/" + name + "/";
+func generateDatapath(name string) string {
+	operateSystem := runtime.GOOS
+	filename := "/var/log/" + name + "/"
 	if operateSystem != "linux" {
 		homePath, err := os.UserHomeDir()
 		if err != nil {
 			return ""
 		}
 		if operateSystem == "windows" {
-			filename = homePath + `\`+ name + `\`
+			filename = homePath + `\` + name + `\`
 		} else {
-			filename = homePath + "/" + name+ "/"
+			filename = homePath + "/" + name + "/"
 		}
 	}
 	fileInfo, err := os.Stat(filename)
-    if err != nil {
-        if os.IsNotExist(err) {
+	if err != nil {
+		if os.IsNotExist(err) {
 			logger.Error("dir not exist")
 			err := os.Mkdir(filename, 0755)
 			if err != nil {
@@ -211,34 +273,34 @@ func generateDatapath (name string) string {
 			}
 			return filename
 		} else {
-            logger.Error("other err:", err)
-        }
-        return ""
-    }
+			logger.Error("other err:", err)
+		}
+		return ""
+	}
 
 	if !fileInfo.Mode().IsDir() {
-        logger.Error("not dir")
-    }
+		logger.Error("not dir")
+	}
 	return filename
 }
 
-func generateRemoteDatapath (name string) string {
-	operateSystem := runtime.GOOS;
-	filename := "/var/log/" + name + "/remote/";
+func generateRemoteDatapath(name string) string {
+	operateSystem := runtime.GOOS
+	filename := "/var/log/" + name + "/remote/"
 	if operateSystem != "linux" {
 		homePath, err := os.UserHomeDir()
 		if err != nil {
 			return ""
 		}
 		if operateSystem == "windows" {
-			filename = homePath + `\`+ name + `\remote\` 
+			filename = homePath + `\` + name + `\remote\`
 		} else {
-			filename = homePath + "/" + name + "/remote/" 
+			filename = homePath + "/" + name + "/remote/"
 		}
 	}
 	fileInfo, err := os.Stat(filename)
-    if err != nil {
-        if os.IsNotExist(err) {
+	if err != nil {
+		if os.IsNotExist(err) {
 			logger.Error("dir not exist")
 			err := os.Mkdir(filename, 0755)
 			if err != nil {
@@ -247,19 +309,19 @@ func generateRemoteDatapath (name string) string {
 			}
 			return filename
 		} else {
-            logger.Error("other err:", err)
-        }
-        return ""
-    }
+			logger.Error("other err:", err)
+		}
+		return ""
+	}
 
 	if !fileInfo.Mode().IsDir() {
-        logger.Error("not dir")
-    }
+		logger.Error("not dir")
+	}
 	return filename
 }
 
 func isDate(str string) bool {
-	dateLayout := "2006-01-02" 
+	dateLayout := "2006-01-02"
 	_, err := time.Parse(dateLayout, str)
 	return err == nil
 }
@@ -286,7 +348,7 @@ func isValidToken(token string, config types.Config) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	if result["Active"] != nil {
 		active := result["Active"].(bool)
 		return active
@@ -301,7 +363,7 @@ func sync(deviceId string, config types.Config) {
 		//check s3
 		client := s3.InitS3(config.Endpoint, config.Bucket, config.Region)
 		basics := s3.BucketBasics{client}
-		bucketExist,err := basics.BucketExists(config.Bucket)
+		bucketExist, err := basics.BucketExists(config.Bucket)
 		if err != nil {
 			logger.Error("BucketExists error:", err)
 		}
@@ -309,7 +371,7 @@ func sync(deviceId string, config types.Config) {
 			basics.CreateBucket(config.Bucket, config.Region)
 		}
 		//
-		listObjects, err := basics.ListObjects(config.Bucket);
+		listObjects, err := basics.ListObjects(config.Bucket)
 		if err != nil {
 			logger.Error("listObject error:", err)
 		}
@@ -318,7 +380,7 @@ func sync(deviceId string, config types.Config) {
 		//sync with s3
 		for _, item := range listObjects {
 			if isDate(strings.Split(*item.Key, "_")[0]) {
-				basics.Download(config.Bucket, *item.Key, dataRemotePath + *item.Key, config.ForceSync)
+				basics.Download(config.Bucket, *item.Key, dataRemotePath+*item.Key, config.ForceSync)
 			}
 		}
 	}
@@ -331,7 +393,7 @@ func readCSV(c *gin.Context, deviceId string, config types.Config) [][]string {
 	var limitInt int = 0
 	var checkFlag bool = false
 	if limit != "" {
-		limitParseInt, err := strconv.Atoi(limit);
+		limitParseInt, err := strconv.Atoi(limit)
 		if err != nil {
 			logger.Error("parse int err")
 			return nil
@@ -350,7 +412,7 @@ func readCSV(c *gin.Context, deviceId string, config types.Config) [][]string {
 	dataPath := generateDatapath(config.Name)
 	dataRemotePath := generateRemoteDatapath(config.Name)
 	currentDate := time.Now()
-	formatData := currentDate.Format("2006-01-02");
+	formatData := currentDate.Format("2006-01-02")
 	if date != "" {
 		if !isDate(date) {
 			return nil
@@ -358,11 +420,11 @@ func readCSV(c *gin.Context, deviceId string, config types.Config) [][]string {
 			dates = append(dates, date)
 			checkFlag = true
 		}
-	} else {	
+	} else {
 		dates = append(dates, formatData)
-		for i := 0 ; i < limitInt - 1; i++ {
+		for i := 0; i < limitInt-1; i++ {
 			currentDate = currentDate.AddDate(0, 0, -1)
-			formatData := currentDate.Format("2006-01-02");
+			formatData := currentDate.Format("2006-01-02")
 			dates = append(dates, formatData)
 		}
 	}
@@ -372,7 +434,7 @@ func readCSV(c *gin.Context, deviceId string, config types.Config) [][]string {
 	//check s3
 	client := s3.InitS3(config.Endpoint, config.Bucket, config.Region)
 	basics := s3.BucketBasics{client}
-	bucketExist,err := basics.BucketExists(config.Bucket)
+	bucketExist, err := basics.BucketExists(config.Bucket)
 	if err != nil {
 		logger.Error("BucketExists error:", err)
 		return nil
@@ -391,19 +453,19 @@ func readCSV(c *gin.Context, deviceId string, config types.Config) [][]string {
 	for _, file := range files {
 		if !file.IsDir() && isDate(strings.Split(file.Name(), "_")[0]) {
 			// remove local file not exist in s3
-			err := basics.Download(config.Bucket, file.Name(), dataRemotePath + file.Name(), false)
+			err := basics.Download(config.Bucket, file.Name(), dataRemotePath+file.Name(), false)
 			if err == nil {
-				fileDate := strings.Split(file.Name(), "_")[0];
+				fileDate := strings.Split(file.Name(), "_")[0]
 				if len(dates) > 0 {
 					flag := false
-					for _,d := range dates {	
+					for _, d := range dates {
 						if strings.Split(file.Name(), "_")[0] == d {
 							flag = true
-							if (checkFlag) {
-								basics.Download(config.Bucket, file.Name(), dataRemotePath + file.Name(), checkFlag)
+							if checkFlag {
+								basics.Download(config.Bucket, file.Name(), dataRemotePath+file.Name(), checkFlag)
 							}
 						}
-					};
+					}
 					if flag {
 						fileNames = append(fileNames, file.Name())
 					}
@@ -415,9 +477,9 @@ func readCSV(c *gin.Context, deviceId string, config types.Config) [][]string {
 	}
 	var statuses [][]string
 	if len(fileNames) > 0 {
-		logger.Info("start read local data from remote:", fileNames[0] + "----" + fileNames[len(fileNames) - 1])
+		logger.Info("start read local data from remote:", fileNames[0]+"----"+fileNames[len(fileNames)-1])
 	}
-	for i := 0; i < len(fileNames); i++ {		
+	for i := 0; i < len(fileNames); i++ {
 		file, err := os.Open(dataRemotePath + fileNames[i])
 		if err != nil {
 			logger.Error("read error:", fileNames[i])
@@ -430,10 +492,10 @@ func readCSV(c *gin.Context, deviceId string, config types.Config) [][]string {
 		if err != nil {
 			logger.Error("read err")
 			return nil
-		}		
+		}
 	}
-	if (date == "" || date == formatData) {
-		stautsData, err := readSingleFile(dataPath + formatData);
+	if date == "" || date == formatData {
+		stautsData, err := readSingleFile(dataPath + formatData)
 		if err != nil {
 			logger.Error("read today data err:", err)
 		}
@@ -443,22 +505,22 @@ func readCSV(c *gin.Context, deviceId string, config types.Config) [][]string {
 		timei, _ := time.Parse("2006-01-02 15:04:05 -0700", statuses[i][0])
 		timej, _ := time.Parse("2006-01-02 15:04:05 -0700", statuses[j][0])
 		return timei.Before(timej)
-	})		
+	})
 	return statuses
 }
 
 func writeCSV(c *gin.Context, deviceId string, dataMap map[string][]string, name string) {
 	dataPath := generateDatapath(name)
 	currentDate := time.Now()
-	formatData := currentDate.Format("2006-01-02");
-	if (dataPath != "") {
-		file, err := os.OpenFile(dataPath + formatData, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-  
+	formatData := currentDate.Format("2006-01-02")
+	if dataPath != "" {
+		file, err := os.OpenFile(dataPath+formatData, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+
 		if err != nil {
 			return
 		}
 		defer file.Close()
-	
+
 		writer := csv.NewWriter(file)
 		defer writer.Flush()
 		var data map[string][]string
@@ -468,7 +530,7 @@ func writeCSV(c *gin.Context, deviceId string, dataMap map[string][]string, name
 			parseErr := c.Request.ParseForm()
 			if parseErr != nil {
 				c.String(http.StatusBadRequest, "Failed to parse form data")
-				return 
+				return
 			}
 			data = c.Request.Form
 		} else {
@@ -480,7 +542,7 @@ func writeCSV(c *gin.Context, deviceId string, dataMap map[string][]string, name
 				err := writer.Write([]string{key, value, origin})
 				if err != nil {
 					c.String(http.StatusInternalServerError, "Failed to write to CSV file")
-					return 
+					return
 				}
 			}
 		}
@@ -512,7 +574,7 @@ func checkAPIHealth(deviceId string, config types.Config) {
 				satusCodeStr := strconv.Itoa(resp.StatusCode)
 				healthMap[currentTimeString] = []string{satusCodeStr}
 				writeCSV(nil, deviceId, healthMap, config.Name)
-			} 
+			}
 			resp.Body.Close()
 		}
 	}
@@ -525,11 +587,11 @@ func scheduleUploadStatus(filePath string, deviceId string, config types.Config)
 	}
 }
 
-func uploadStatus (filePath string, deviceId string, endpoint string, bucket string, region string) {
+func uploadStatus(filePath string, deviceId string, endpoint string, bucket string, region string) {
 	client := s3.InitS3(endpoint, bucket, region)
 	basics := s3.BucketBasics{client}
 	currentTime := time.Now()
-	formatData := currentTime.Format("2006-01-02");
+	formatData := currentTime.Format("2006-01-02")
 	logger.Info("list local dir:", filePath)
 	files, err := os.ReadDir(filePath)
 	if err != nil {
@@ -542,11 +604,11 @@ func uploadStatus (filePath string, deviceId string, endpoint string, bucket str
 	}
 	for _, file := range files {
 		if !file.IsDir() && isDate(file.Name()) {
-			err := basics.Upload(bucket, formatData + "_" + deviceId, filePath + file.Name())
+			err := basics.Upload(bucket, formatData+"_"+deviceId, filePath+file.Name())
 			if err != nil {
 				continue
 			}
-			if (file.Name() != formatData) {
+			if file.Name() != formatData {
 				os.Remove(filePath + file.Name())
 			}
 		}
@@ -554,10 +616,10 @@ func uploadStatus (filePath string, deviceId string, endpoint string, bucket str
 }
 
 func wakeOnLAN(macAddr string) error {
-    interfaces, err := net.Interfaces()
+	interfaces, err := net.Interfaces()
 	if err != nil {
-        return err
-    }
+		return err
+	}
 	logger.Info("list interfaces:", interfaces)
 	mac, err := net.ParseMAC(macAddr)
 	broadcastAddr := net.IPv4(255, 255, 255, 255)
@@ -565,18 +627,18 @@ func wakeOnLAN(macAddr string) error {
 		IP:   broadcastAddr,
 		Port: 9,
 	}
-    if err != nil {
-        return err
-    }
+	if err != nil {
+		return err
+	}
 	magicPacket := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 	for i := 0; i < 16; i++ {
 		magicPacket = append(magicPacket, mac...)
 	}
 
-    for _, iface := range interfaces {
-        if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
-            continue
-        }
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
+			continue
+		}
 
 		addrs, err := iface.Addrs()
 		if err != nil {
@@ -591,13 +653,13 @@ func wakeOnLAN(macAddr string) error {
 					return err
 				}
 				defer conn.Close()
-			
+
 				_, err = conn.Write(magicPacket)
 				if err != nil {
 					return err
 				}
-			}		
+			}
 		}
-    }
-    return nil
+	}
+	return nil
 }

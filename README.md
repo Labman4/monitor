@@ -28,7 +28,10 @@
     "vaultUri": "", //vault server uri
     "vaultCloudUri": "", //vault online uri for wol
     "vaultConfigPath": "" ,//vault kv path
-    "vaultCustomKey": ""//vault config update key
+    "vaultCustomKey": "",//vault config update key
+    "acmeEmail": "",  //support for https
+	"acmeDomain": "", //support for https
+	"cfToken": "" //cloudflare api key with dns edit permssion
 }
 ```
 
