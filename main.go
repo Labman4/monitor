@@ -189,18 +189,22 @@ func main() {
 	}()
 
 	if config.EnableCheck {
+		logger.Info("enable api check")
 		go checkAPIHealth(deviceId, *config)
 	}
 
 	if config.EnableUpload {
+		logger.Info("enable status data upload")
 		go scheduleUploadStatus(generateDatapath(config.Name), deviceId, *config)
 	}
 
 	if config.EnableSync {
+		logger.Info("enable data sync")
 		go sync(deviceId, *config)
 	}
 
 	if config.EnableIpCheck {
+		logger.Info("enable report install ip")
 		go reportIp(*config)
 	}
 	select {}
