@@ -168,12 +168,12 @@ func main() {
 	if conn.LocalAddr() == nil {
 		logger.Error("couldn't retrieve local address")
 	}
-	logger.Info("local address:", conn.LocalAddr().String())
+	logger.Debug("local address:", conn.LocalAddr().String())
 
 	if conn.RemoteAddr() == nil {
 		logger.Error("couldn't retrieve remote address")
 	}
-	logger.Info("remote address:", conn.RemoteAddr().String())
+	logger.Debug("remote address:", conn.RemoteAddr().String())
 
 	tlsListener := tls.NewListener(proxyListener, tlsConfig)
 
@@ -443,7 +443,7 @@ func readCSV(c *gin.Context, deviceId string, config types.Config) [][]string {
 		basics.CreateBucket(config.Bucket, config.Region)
 	}
 	//start read s3 data
-	logger.Info("list remote dir", dataRemotePath)
+	logger.Debug("list remote dir", dataRemotePath)
 	logger.Info("forceCheck: ", checkFlag)
 	files, err := os.ReadDir(dataRemotePath)
 	if err != nil {
@@ -558,7 +558,7 @@ func reportIp(config types.Config) {
 }
 
 func checkAPIHealth(deviceId string, config types.Config) {
-	logger.Info("start check health with:", config.MonitorUrl)
+	logger.Debug("start check health with:", config.MonitorUrl)
 	for range time.Tick(time.Duration(config.CheckDuration) * time.Second) {
 		resp, err := http.Get(config.MonitorUrl)
 		currentTime := time.Now()
@@ -592,7 +592,7 @@ func uploadStatus(filePath string, deviceId string, endpoint string, bucket stri
 	basics := s3.BucketBasics{client}
 	currentTime := time.Now()
 	formatData := currentTime.Format("2006-01-02")
-	logger.Info("list local dir:", filePath)
+	logger.Debug("list local dir:", filePath)
 	files, err := os.ReadDir(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -647,7 +647,7 @@ func wakeOnLAN(macAddr string) error {
 		for _, addr := range addrs {
 			if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
 				ipv4Addr := ipnet.IP.To4()
-				logger.Info("bind addr:", ipv4Addr)
+				logger.Debug("bind addr:", ipv4Addr)
 				conn, err := net.DialUDP("udp", &net.UDPAddr{IP: ipv4Addr, Port: 0}, udpAddr)
 				if err != nil {
 					return err

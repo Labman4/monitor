@@ -1,23 +1,23 @@
 package vault
 
 import (
-	"github.com/go-resty/resty/v2"
 	"elpsykongroo.com/monitor/pkg/types"
 	"encoding/json"
+	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
 	"strings"
-
 )
+
 var logger = logrus.New()
 
-func ValidateTotp (code string, config types.Config) bool {
+func ValidateTotp(code string, config types.Config) bool {
 	client := resty.New()
 
 	token := login(config, true)
 	resp, err := client.R().
 		SetHeader("X-Vault-Token", token).
 		Get(config.VaultCloudUri + "/v1/totp/code/" + config.VaultPublicUser)
-		logger.Info("totp resp:", resp.String())
+	logger.Info("totp resp:", resp.String())
 
 	if err != nil {
 		logger.Error("get code err:", err)
@@ -28,22 +28,22 @@ func ValidateTotp (code string, config types.Config) bool {
 	if err != nil {
 		return false
 	}
-	c :=  codeData["data"].(map[string]interface{})["code"].(string)
-	if (code == c) {
+	c := codeData["data"].(map[string]interface{})["code"].(string)
+	if code == c {
 		return true
 	} else {
 		return false
 	}
 }
 
-func ReportIpByCheck (config types.Config) {
+func ReportIpByCheck(config types.Config) {
 	client := resty.New()
 	token := login(config, false)
 	if token != "" {
-		logger.Info ("current config path: {}, key: {} ", config.VaultUri + config.VaultConfigPath, config.VaultCustomKey)
+		logger.Info("current config path: {}, key: {} ", config.VaultUri+config.VaultConfigPath, config.VaultCustomKey)
 		resp, err := client.R().
-		SetHeader("X-Vault-Token", token).
-		Get(config.VaultUri + config.VaultConfigPath)
+			SetHeader("X-Vault-Token", token).
+			Get(config.VaultUri + config.VaultConfigPath)
 
 		if err != nil {
 			logger.Error("get config err:", err)
@@ -56,7 +56,7 @@ func ReportIpByCheck (config types.Config) {
 			logger.Error("marshal json err:", err)
 			return
 		}
-		currentConfigKey, ok := data["data"].(map[string]interface{})["data"].(map[string]interface{})[config.VaultCustomKey].(string);
+		currentConfigKey, ok := data["data"].(map[string]interface{})["data"].(map[string]interface{})[config.VaultCustomKey].(string)
 		logger.Info("current config custom kv ", currentConfigKey)
 
 		if !ok {
@@ -87,12 +87,12 @@ func ReportIpByCheck (config types.Config) {
 			newIps := currentConfigKey + "," + ip
 			data["data"].(map[string]interface{})["data"].(map[string]interface{})[config.VaultCustomKey] = newIps
 			logger.Debug("modify config kv ", data["data"].(map[string]interface{})["data"].(map[string]interface{})[config.VaultCustomKey])
-			
+
 			reportResp, err := client.R().
 				SetHeader("X-Vault-Token", token).
 				SetBody(data["data"].(map[string]interface{})).
 				Post(config.VaultUri + config.VaultConfigPath)
-				
+
 			if err != nil {
 				logger.Error("modify config err", err)
 			} else {
@@ -101,7 +101,7 @@ func ReportIpByCheck (config types.Config) {
 		} else {
 			logger.Info("IP already exists, skipping report")
 		}
-	}	
+	}
 }
 
 func login(config types.Config, online bool) string {
@@ -110,7 +110,7 @@ func login(config types.Config, online bool) string {
 	body := map[string]string{
 		"password": config.Password,
 	}
-	var serverUri string;
+	var serverUri string
 	if online {
 		serverUri = config.VaultCloudUri
 	} else {
@@ -134,7 +134,7 @@ func login(config types.Config, online bool) string {
 		return ""
 	}
 
-	token, ok :=  data["auth"].(map[string]interface{})["client_token"].(string)
+	token, ok := data["auth"].(map[string]interface{})["client_token"].(string)
 
 	if !ok {
 		return ""

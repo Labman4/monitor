@@ -2,18 +2,19 @@ package s3
 
 import (
 	"context"
-	"os"
-	"io"
-	"errors"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 	"github.com/sirupsen/logrus"
+	"io"
+	"os"
 )
+
 var logger = logrus.New()
 
 type BucketBasics struct {
@@ -36,7 +37,7 @@ func (basics BucketBasics) ListObjects(bucketName string) ([]types.Object, error
 func (basics BucketBasics) HeadObject(bucketName string, key string) (*s3.HeadObjectOutput, error) {
 	result, err := basics.S3Client.HeadObject(context.TODO(), &s3.HeadObjectInput{
 		Bucket: aws.String(bucketName),
-		Key: aws.String(key),
+		Key:    aws.String(key),
 	})
 	if err != nil {
 		logger.Error("head objects err:", err.Error())
@@ -45,7 +46,7 @@ func (basics BucketBasics) HeadObject(bucketName string, key string) (*s3.HeadOb
 }
 
 func (basics BucketBasics) DownloadFile(bucketName string, objectKey string, fileName string) error {
-	logger.Info("start download data:", fileName)
+	logger.Debug("start download data:", fileName)
 	result, err := basics.S3Client.GetObject(context.TODO(), &s3.GetObjectInput{
 		Bucket: aws.String(bucketName),
 		Key:    aws.String(objectKey),
@@ -55,7 +56,7 @@ func (basics BucketBasics) DownloadFile(bucketName string, objectKey string, fil
 		return err
 	}
 	defer result.Body.Close()
-	logger.Info("end download data:", fileName)
+	logger.Debug("end download data:", fileName)
 	file, err := os.Create(fileName)
 	if err != nil {
 		logger.Error("Couldn't create file %v. Here's why: %v\n", fileName, err)
@@ -83,7 +84,6 @@ func (basics BucketBasics) CreateBucket(name string, region string) error {
 	}
 	return err
 }
-
 
 func (basics BucketBasics) BucketExists(bucketName string) (bool, error) {
 	_, err := basics.S3Client.HeadBucket(context.TODO(), &s3.HeadBucketInput{
@@ -118,9 +118,9 @@ func (basics BucketBasics) Upload(bucketName string, objectKey string, fileName 
 		if err != nil {
 			var bne *types.NotFound
 			if errors.As(err, &bne) {
-				logger.Info("remote data not exist, start upload:", fileName)
+				logger.Debug("remote data not exist, start upload:", fileName)
 				err := basics.UploadFile(bucketName, objectKey, fileName)
-				logger.Info("remote data not exist, end upload:", fileName)	
+				logger.Debug("remote data not exist, end upload:", fileName)
 				if err != nil {
 					return err
 				}
@@ -128,30 +128,30 @@ func (basics BucketBasics) Upload(bucketName string, objectKey string, fileName 
 			} else {
 				return err
 			}
-		} 
-	    if !checkFileBetweenRemoteAndLocal(headResult, fileName) {
-			logger.Info("check failed, start upload local data to remote:", fileName)
-			err :=basics.UploadFile(bucketName, objectKey, fileName)
-			logger.Info("check failed, end upload local data to remote:", fileName)
+		}
+		if !checkFileBetweenRemoteAndLocal(headResult, fileName) {
+			logger.Debug("check failed, start upload local data to remote:", fileName)
+			err := basics.UploadFile(bucketName, objectKey, fileName)
+			logger.Debug("check failed, end upload local data to remote:", fileName)
 			if err != nil {
 				return err
 			}
 		}
 	} else if os.IsNotExist(err) {
-		logger.Info("local data not exist, skip upload:", fileName)	
+		logger.Debug("local data not exist, skip upload:", fileName)
 	} else {
 		logger.Error("Error checking file existence:", err)
 	}
 	return err
 }
 
-func checkFileBetweenRemoteAndLocal (headResult *s3.HeadObjectOutput, fileName string) bool {
+func checkFileBetweenRemoteAndLocal(headResult *s3.HeadObjectOutput, fileName string) bool {
 	local256, err := calculateSHA256(fileName)
 	if err != nil {
 		logger.Error("sha256 err:", err)
 	}
-	if headResult.ChecksumSHA256 != nil && *headResult.ChecksumSHA256 != ""  {
-		logger.Debug("check sha256 remote:", headResult.ChecksumSHA256)	
+	if headResult.ChecksumSHA256 != nil && *headResult.ChecksumSHA256 != "" {
+		logger.Debug("check sha256 remote:", headResult.ChecksumSHA256)
 		logger.Debug("check sha256 local:", local256)
 		if headResult.ChecksumSHA256 != &local256 {
 			return false
@@ -166,12 +166,12 @@ func checkFileBetweenRemoteAndLocal (headResult *s3.HeadObjectOutput, fileName s
 		logger.Info("not enough data to check, just do it:", fileName)
 		return false
 	}
-	logger.Info("check success, skip operation")
+	logger.Debug("check success, skip operation")
 	return true
 }
 
 func (basics BucketBasics) UploadFile(bucketName string, objectKey string, fileName string) error {
-	logger.Info("start upload data:", fileName)
+	logger.Debug("start upload data:", fileName)
 	sha256, err := calculateSHA256(fileName)
 	if err != nil {
 		logger.Error("sha256 err:", err)
@@ -192,7 +192,7 @@ func (basics BucketBasics) UploadFile(bucketName string, objectKey string, fileN
 		if err != nil {
 			logger.Error("Couldn't upload file", err)
 		}
-		logger.Info("end upload data:", fileName)
+		logger.Debug("end upload data:", fileName)
 	}
 	return err
 }
@@ -200,8 +200,8 @@ func (basics BucketBasics) UploadFile(bucketName string, objectKey string, fileN
 func (basics BucketBasics) Download(bucketName string, objectKey string, fileName string, checkflag bool) error {
 	_, err := os.Stat(fileName)
 	if err == nil {
-		// only check custom date and today 
-		if (checkflag) {
+		// only check custom date and today
+		if checkflag {
 			logger.Info("file exist, start sync data between local with remote:", fileName)
 			headResult, err := basics.HeadObject(bucketName, objectKey)
 			if err != nil {
@@ -211,12 +211,12 @@ func (basics BucketBasics) Download(bucketName string, objectKey string, fileNam
 					os.Remove(fileName)
 					return err
 				}
-				return nil	
-			} 
+				return nil
+			}
 			if !checkFileBetweenRemoteAndLocal(headResult, fileName) {
-				logger.Info("check failed, start fetch remote data to local:", fileName)
+				logger.Debug("check failed, start fetch remote data to local:", fileName)
 				basics.DownloadFile(bucketName, objectKey, fileName)
-				logger.Info("check failed, end fetch remote data to local:", fileName)	
+				logger.Debug("check failed, end fetch remote data to local:", fileName)
 			}
 		}
 	} else if os.IsNotExist(err) {
@@ -245,15 +245,14 @@ func calculateSHA256(filePath string) (string, error) {
 	return hashString, nil
 }
 
-func InitS3 (endpoint string, bucket string, region string) *s3.Client {
+func InitS3(endpoint string, bucket string, region string) *s3.Client {
 	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
 	if err != nil {
 		logger.Error("init s3:", err)
 	}
-	client := s3.NewFromConfig(cfg, func (o *s3.Options) {
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(endpoint)
 		o.UsePathStyle = true
-    })
+	})
 	return client
 }
-
