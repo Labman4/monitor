@@ -61,6 +61,7 @@ func main() {
 		c.Next()
 	})
 	if config.EnableWol {
+		logger.Info("enable wake on lan")
 		r.POST("/wol", func(c *gin.Context) {
 			if c != nil {
 				parseErr := c.Request.ParseForm()
@@ -101,6 +102,7 @@ func main() {
 	})
 
 	if config.EnableQuery {
+		logger.Info("enable status query")
 		r.GET("/status", func(c *gin.Context) {
 			statuses := readCSV(c, deviceId, *config)
 			var healthData []types.HealthData
@@ -127,6 +129,27 @@ func main() {
 			}
 		})
 	}
+
+	if config.EnableCheck {
+		logger.Info("enable api check")
+		go checkAPIHealth(deviceId, *config)
+	}
+
+	if config.EnableUpload {
+		logger.Info("enable status data upload")
+		go scheduleUploadStatus(generateDatapath(config.Name), deviceId, *config)
+	}
+
+	if config.EnableSync {
+		logger.Info("enable data sync")
+		go sync(deviceId, *config)
+	}
+
+	if config.EnableIpCheck {
+		logger.Info("enable report install ip")
+		go reportIp(*config)
+	}
+
 	if config.CfToken == "" {
 		logger.Error("Cloudflare API Token error")
 	}
@@ -188,25 +211,6 @@ func main() {
 		}
 	}()
 
-	if config.EnableCheck {
-		logger.Info("enable api check")
-		go checkAPIHealth(deviceId, *config)
-	}
-
-	if config.EnableUpload {
-		logger.Info("enable status data upload")
-		go scheduleUploadStatus(generateDatapath(config.Name), deviceId, *config)
-	}
-
-	if config.EnableSync {
-		logger.Info("enable data sync")
-		go sync(deviceId, *config)
-	}
-
-	if config.EnableIpCheck {
-		logger.Info("enable report install ip")
-		go reportIp(*config)
-	}
 	select {}
 }
 
