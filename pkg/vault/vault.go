@@ -37,73 +37,82 @@ func ValidateTotp(code string, config types.Config) bool {
 }
 
 func ReportIpByCheck(config types.Config) {
-	client := resty.New()
 	token := login(config, false)
+	client := resty.New()
 	if token != "" {
-		logger.Info("current config path: {}, key: {} ", config.VaultUri+config.VaultConfigPath, config.VaultCustomKey)
-		resp, err := client.R().
-			SetHeader("X-Vault-Token", token).
-			Get(config.VaultUri + config.VaultConfigPath)
-
-		if err != nil {
-			logger.Error("get config err:", err)
-			return
-		}
-
-		var data map[string]interface{}
-		err = json.Unmarshal(resp.Body(), &data)
-		if err != nil {
-			logger.Error("marshal json err:", err)
-			return
-		}
-		currentConfigKey, ok := data["data"].(map[string]interface{})["data"].(map[string]interface{})[config.VaultCustomKey].(string)
-		logger.Info("current config custom kv ", currentConfigKey)
-
-		if !ok {
-			logger.Error("get custom key err")
-			return
-		}
-
-		checkResp, err := client.R().Get(config.IpCheckUrl)
-		if err != nil {
-			logger.Error("failed to get IP check response", err)
-			return
-		}
-
-		ip := checkResp.String()
-		logger.Info("ip check result ", ip)
-
-		currentIps := strings.Split(currentConfigKey, ",")
-		isIpExist := false
-
-		for _, currentIp := range currentIps {
-			if ip == currentIp {
-				isIpExist = true
-				break
+		paths := strings.Split(config.VaultConfigPath, ",")
+		keys := strings.Split(config.VaultCustomKey, ",")
+		for _, p := range paths {
+			for _, k := range keys {
+				report(client, config, p, k, token)
 			}
-		}
-
-		if !isIpExist {
-			newIps := currentConfigKey + "," + ip
-			data["data"].(map[string]interface{})["data"].(map[string]interface{})[config.VaultCustomKey] = newIps
-			logger.Debug("modify config kv ", data["data"].(map[string]interface{})["data"].(map[string]interface{})[config.VaultCustomKey])
-
-			reportResp, err := client.R().
-				SetHeader("X-Vault-Token", token).
-				SetBody(data["data"].(map[string]interface{})).
-				Post(config.VaultUri + config.VaultConfigPath)
-
-			if err != nil {
-				logger.Error("modify config err", err)
-			} else {
-				logger.Info("report result:", reportResp.String())
-			}
-		} else {
-			logger.Info("IP already exists, skipping report")
 		}
 	}
 }
 
+func report(client *resty.Client, config types.Config, path string, key string, token string) {
+	logger.Info("current config path:", config.VaultUri+path)
+	resp, err := client.R().
+		SetHeader("X-Vault-Token", token).
+		Get(config.VaultUri + path)
+
+	if err != nil {
+		logger.Error("get config err:", err)
+		return
+	}
+
+	var data map[string]interface{}
+	err = json.Unmarshal(resp.Body(), &data)
+	if err != nil {
+		logger.Error("marshal json err:", err)
+		return
+	}
+	currentConfigKey, ok := data["data"].(map[string]interface{})["data"].(map[string]interface{})[key].(string)
+	logger.Info("current config custom kv ", key)
+
+	if !ok {
+		logger.Error("get custom key err")
+		return
+	}
+
+	checkResp, err := client.R().Get(config.IpCheckUrl)
+	if err != nil {
+		logger.Error("failed to get IP check response", err)
+		return
+	}
+
+	ip := checkResp.String()
+	logger.Info("ip check result ", ip)
+
+	currentIps := strings.Split(currentConfigKey, ",")
+	isIpExist := false
+
+	for _, currentIp := range currentIps {
+		if ip == currentIp {
+			isIpExist = true
+			break
+		}
+	}
+
+	if !isIpExist {
+		newIps := currentConfigKey + "," + ip
+		data["data"].(map[string]interface{})["data"].(map[string]interface{})[key] = newIps
+		logger.Debug("modify config kv ", data["data"].(map[string]interface{})["data"].(map[string]interface{})[key])
+
+		reportResp, err := client.R().
+			SetHeader("X-Vault-Token", token).
+			SetBody(data["data"].(map[string]interface{})).
+			Post(config.VaultUri + path)
+
+		if err != nil {
+			logger.Error("modify config err", err)
+		} else {
+			logger.Info("report result:", reportResp.String())
+		}
+	} else {
+		logger.Info("IP already exists, skipping report")
+	}
+}
 func login(config types.Config, online bool) string {
 	client := resty.New()
 
